@@ -224,6 +224,11 @@ bool Scanner::scan(const ScanParams &params, const LineFn &onLine,
     std::vector<uint8_t> raw(kStride * 64);   // line reassembly buffer
     int rawFill = 0, lineNo = 0;
     std::vector<uint8_t> outRow(params.color ? kOutW * 3 : kOutW);
+    // decoded rows are buffered and emitted bottom-up: the scanner reads
+    // the page from its bottom line, so the frame needs a 180° turn
+    // (vertical flip + mirrored sensor X axis)
+    std::vector<uint8_t> outBuf;
+    outBuf.reserve(23u << 20);
 
     const auto feed = [&](const uint8_t *data, int n) {
         while (n > 0) {
@@ -236,25 +241,25 @@ bool Scanner::scan(const ScanParams &params, const LineFn &onLine,
                 rawFill = 0;
                 if (++lineNo > kSkipLines && onLine) {
                     const uint8_t *line = raw.data();
-                    // orientation: sensor columns map straight to output
-                    // (x -> 219+x); only the G die is mirrored (+shift 66)
+                    // X axis: the frame is mirrored (out x <- sensor
+                    // 2340-x); the G die is additionally reversed (+66 px)
                     if (params.color) {
                         for (int x = 0; x < kOutW; ++x) {
-                            int pG = kPx - 1 + kGShift - (219 + x);
+                            int pG = x + kGShift + 219;
                             if (pG > kPx - 1) pG = kPx - 1;
-                            const int pRB = 219 + x;
+                            const int pRB = kPx - 1 - (219 + x);
                             outRow[3 * x + 0] = lut[0][line[pRB * 3 + 2]];
                             outRow[3 * x + 1] = lut[1][line[pG * 3]];
                             outRow[3 * x + 2] = lut[2][line[pRB * 3 + 1]];
                         }
-                        onLine(outRow.data(), kOutW * 3);
+                        outBuf.insert(outBuf.end(), outRow.begin(), outRow.end());
                     } else {
                         for (int x = 0; x < kOutW; ++x) {
-                            int pG = kPx - 1 + kGShift - (219 + x);
+                            int pG = x + kGShift + 219;
                             if (pG > kPx - 1) pG = kPx - 1;
                             outRow[x] = lut[1][line[pG * 3]];
                         }
-                        onLine(outRow.data(), kOutW);
+                        outBuf.insert(outBuf.end(), outRow.begin(), outRow.end());
                     }
                 }
             }
@@ -344,6 +349,13 @@ bool Scanner::scan(const ScanParams &params, const LineFn &onLine,
         }
         if ((i & 255) == 0 && onProgress)
             onProgress(double(i) / total * 100.0, "");
+    }
+    // emit the buffered rows bottom-up (vertical part of the 180° turn)
+    if (onLine && !outBuf.empty()) {
+        const size_t rowLen = params.color ? size_t(kOutW) * 3 : size_t(kOutW);
+        for (const uint8_t *p = outBuf.data() + outBuf.size() - rowLen;
+             p + rowLen > outBuf.data(); p -= rowLen)
+            onLine(p, int(rowLen));
     }
     if (onProgress)
         onProgress(100.0, "");
