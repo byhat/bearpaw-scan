@@ -10,8 +10,6 @@ software and no SANE installation required — the engine (the
 talks to the scanner directly over libusb using a fully reverse-engineered
 protocol.
 
-![screenshot](docs/scan-sample.png)
-*A real scan produced by the app (A4 notebook page, 300 dpi color).*
 
 | | |
 |---|---|
