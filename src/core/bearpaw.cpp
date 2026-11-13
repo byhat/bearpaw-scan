@@ -236,11 +236,13 @@ bool Scanner::scan(const ScanParams &params, const LineFn &onLine,
                 rawFill = 0;
                 if (++lineNo > kSkipLines && onLine) {
                     const uint8_t *line = raw.data();
+                    // orientation: sensor columns map straight to output
+                    // (x -> 219+x); only the G die is mirrored (+shift 66)
                     if (params.color) {
                         for (int x = 0; x < kOutW; ++x) {
-                            int pG = x + kGShift + 219;
+                            int pG = kPx - 1 + kGShift - (219 + x);
                             if (pG > kPx - 1) pG = kPx - 1;
-                            const int pRB = kPx - 1 - (219 + x);
+                            const int pRB = 219 + x;
                             outRow[3 * x + 0] = lut[0][line[pRB * 3 + 2]];
                             outRow[3 * x + 1] = lut[1][line[pG * 3]];
                             outRow[3 * x + 2] = lut[2][line[pRB * 3 + 1]];
@@ -248,7 +250,7 @@ bool Scanner::scan(const ScanParams &params, const LineFn &onLine,
                         onLine(outRow.data(), kOutW * 3);
                     } else {
                         for (int x = 0; x < kOutW; ++x) {
-                            int pG = x + kGShift + 219;
+                            int pG = kPx - 1 + kGShift - (219 + x);
                             if (pG > kPx - 1) pG = kPx - 1;
                             outRow[x] = lut[1][line[pG * 3]];
                         }
